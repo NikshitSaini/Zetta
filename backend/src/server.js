@@ -3,13 +3,16 @@ import dotenv from "dotenv";
 import authRoutes from "./routes/auth.routes.js";
 import messageRoutes from "./routes/message.routes.js";
 import path from "path";
-
+import connectDB from "./lib/db.js";
+import cookieParser from "cookie-parser";
 dotenv.config();
 const port = process.env.PORT || 3000;
 const app = express();
 const __dirname = path.resolve();
 
+app.use(cookieParser());
 
+app.use(express.json());//req.body listener
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 
@@ -20,4 +23,7 @@ if(process.env.NODE_ENV === "production") {
     })
 }
 
-app.listen(port,()=>{console.log(`Server is running on port ${port}`)});
+app.listen(port,()=>{
+    console.log(`Server is running on port ${port}`);
+    connectDB();
+});
