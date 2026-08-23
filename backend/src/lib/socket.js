@@ -2,7 +2,7 @@ import {Server} from 'socket.io';
 import http from 'http';
 import express from 'express';
 import 'dotenv/config'
-import socketAuthMiddleware from '../middleware/socket.auth.middleware.js';
+import {socketAuthMiddleware} from '../middleware/socket.auth.middleware.js';
 const app = express();
 const httpServer = http.createServer(app);
 

@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
-import 'config/dotenv';
+import 'dotenv/config';
 
 export const socketAuthMiddleware = async (socket, next) => {
     try{
