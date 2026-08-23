@@ -27,12 +27,12 @@ io.on('connection',(socket)=>{
     const userId = socket.user._id;
     UserSockerMap[userId] = socket.id;
 
-    io.emit('user_connected', Object.keys(UserSockerMap));
+    io.emit('getOnlineUsers', Object.keys(UserSockerMap));
 
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.user.fullname}`);
         delete UserSockerMap[userId];
-        io.emit('user_disconnected', userId);
+        io.emit('getOnlineUsers', Object.keys(UserSockerMap));
     });
     
 });

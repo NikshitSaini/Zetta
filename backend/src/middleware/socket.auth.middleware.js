@@ -6,7 +6,7 @@ export const socketAuthMiddleware = async (socket, next) => {
     try{
         const token = socket.handshake.headers.cookie
         ?.split("; ")
-        .find(c => c.trim().startsWith('token='))
+        .find(c => c.trim().startsWith('jwt='))
         ?.split('=')[1];
 
         if(!token){
@@ -20,7 +20,7 @@ export const socketAuthMiddleware = async (socket, next) => {
             return next(new Error("Authentication error: Invalid token"));
         }
 
-        const user = await User.findById(decoded.id);
+        const user = await User.findById(decoded.userId);
         if(!user){
             console.log("User not found for the provided token");
             return next(new Error("Authentication error: User not found"));
