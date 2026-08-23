@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
@@ -39,7 +40,7 @@ const startServer = async () => {
     app.use("/api/auth", authRoutes);
     app.use("/api/messages", messageRoutes);
 
-    if (process.env.NODE_ENV === "production") {
+    if (fs.existsSync(path.join(frontendDistPath, "index.html"))) {
       app.use(express.static(frontendDistPath));
       app.get("*", (_, res) => {
         res.sendFile(path.join(frontendDistPath, "index.html"));
