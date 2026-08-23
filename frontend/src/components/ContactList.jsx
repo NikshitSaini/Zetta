@@ -24,10 +24,10 @@ function ContactList() {
           <div className="flex items-center gap-3">
             <div className={`avatar ${onlineUsers.includes(contact._id) ? "online" : "offline"}`}>
               <div className="size-12 rounded-full">
-                <img src={contact.profilePic || "/avatar.png"} />
+                <img src={contact.ProfilePic || "/avatar.png"} alt={contact.fullname} />
               </div>
             </div>
-            <h4 className="text-slate-200 font-medium">{contact.fullName}</h4>
+            <h4 className="text-slate-200 font-medium">{contact.fullname}</h4>
           </div>
         </div>
       ))}
