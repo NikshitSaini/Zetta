@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
+import { fileURLToPath } from "url";
 import cookieParser from "cookie-parser";
 
 import connectDB from "./lib/db.js";
@@ -12,7 +13,8 @@ dotenv.config();
 
 const port = process.env.PORT || 3000;
 
-const __dirname = path.resolve();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDistPath = path.resolve(__dirname, "../../frontend/dist");
 
 // Required on Render to correctly read client IPs behind reverse proxies
 app.set("trust proxy", 1);
@@ -38,9 +40,9 @@ const startServer = async () => {
     app.use("/api/messages", messageRoutes);
 
     if (process.env.NODE_ENV === "production") {
-      app.use(express.static(path.join(__dirname, "../frontend/dist")));
+      app.use(express.static(frontendDistPath));
       app.get("*", (_, res) => {
-        res.sendFile(path.join(__dirname, "../frontend/dist/index.html"));
+        res.sendFile(path.join(frontendDistPath, "index.html"));
       });
     }
 
