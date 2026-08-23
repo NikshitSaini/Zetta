@@ -6,20 +6,21 @@ import cookieParser from "cookie-parser";
 
 import connectDB from "./lib/db.js";
 import { connectRedis } from "./lib/redis.js";
+import { app, httpServer } from "./lib/socket.js";
 
 dotenv.config();
 
 const port = process.env.PORT || 3000;
-const app = express();
+
 const __dirname = path.resolve();
 
 // Required on Render to correctly read client IPs behind reverse proxies
 app.set("trust proxy", 1);
 
 // Basic middleware
-app.use(cors());
+app.use(cors( { origin: process.env.CLIENT_URL, credentials: true })); // CORS configuration
 app.use(cookieParser());
-app.use(express.json({ limit: "5MB" })); // req.body listener
+app.use(express.json({limit: "5mb"})); // req.body listener
 
 // Start database connections and server
 const startServer = async () => {
@@ -43,7 +44,7 @@ const startServer = async () => {
       });
     }
 
-    app.listen(port, () => {
+    httpServer.listen(port, () => {
       console.log(`Server is running on port ${port}`);
     });
   } catch (error) {

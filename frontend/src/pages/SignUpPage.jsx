@@ -5,7 +5,7 @@ import { MessageCircleIcon, LockIcon, MailIcon, UserIcon, LoaderIcon } from "luc
 import { Link } from "react-router";
 
 function SignUpPage() {
-  const [formData, setFormData] = useState({ fullName: "", email: "", password: "" });
+  const [formData, setFormData] = useState({ fullname: "", email: "", password: "" });
   const { signup, isSigningUp } = useAuthStore();
 
   const handleSubmit = (e) => {
@@ -38,10 +38,11 @@ function SignUpPage() {
 
                       <input
                         type="text"
-                        value={formData.fullName}
-                        onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                        value={formData.fullname}
+                        onChange={(e) => setFormData({ ...formData, fullname: e.target.value })}
                         className="input"
                         placeholder="John Doe"
+                        required
                       />
                     </div>
                   </div>
@@ -58,6 +59,7 @@ function SignUpPage() {
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="input"
                         placeholder="johndoe@gmail.com"
+                        required
                       />
                     </div>
                   </div>
@@ -74,6 +76,7 @@ function SignUpPage() {
                         onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                         className="input"
                         placeholder="Enter your password"
+                        required
                       />
                     </div>
                   </div>
