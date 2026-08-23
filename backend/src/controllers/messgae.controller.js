@@ -57,7 +57,7 @@ export const sendMessage= async(req,res)=>{
 
         const ReceiverSocketId = getRecieverSocketId(id);
         if(ReceiverSocketId) {
-            io.to(ReceiverSocketId).emit('new_message', savedMessage);
+            io.to(ReceiverSocketId).emit('newMessage', savedMessage);
         }
 
 
@@ -70,14 +70,24 @@ export const sendMessage= async(req,res)=>{
 
 export const getAllChats= async(req,res)=>{ 
     try{
-        const loggedInUserId=req.user._id;
+        const loggedInUserId=req.user._id.toString();
         const chats=await messsage.find({
             $or:[
                 {senderId:loggedInUserId},
                 {receiverId:loggedInUserId}
             ]
         })
-        const chatPartnerIDs=[... new Set(chats.map((msg)=>msg.senderId.toString() === loggedInUserId ? msg.receiverId : msg.senderId))];
+        const chatPartnerIDs = [
+            ...new Set(
+                chats
+                    .map((msg) =>
+                        msg.senderId.toString() === loggedInUserId
+                            ? msg.receiverId.toString()
+                            : msg.senderId.toString()
+                    )
+                    .filter((partnerId) => partnerId !== loggedInUserId)
+            ),
+        ];
         const chatPartners=await User.find({_id:{$in:Array.from(chatPartnerIDs)}}).select("_id fullname email ProfilePic");
         res.status(200).json(chatPartners);
     }
