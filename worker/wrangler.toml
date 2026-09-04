@@ -1,0 +1,12 @@
+name = "tg-storage-worker"
+main = "src/index.js"
+compatibility_date = "2025-09-04"
+
+[vars]
+RENDER_BACKEND_URL = "https://zetta-vxwn.onrender.com"
+WORKER_KEY = "ajehfalwiuefi"
+
+# Secrets (set via: npx wrangler secret put <NAME>)
+# TELEGRAM_BOT_TOKEN
+# TELEGRAM_CHANNEL_ID
+# JWT_SECRET

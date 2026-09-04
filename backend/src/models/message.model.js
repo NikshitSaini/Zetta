@@ -20,6 +20,13 @@ const messageSchema = new mongoose.Schema(
     image: {
       type: String,
     },
+    file: {
+      fileId: { type: mongoose.Schema.Types.ObjectId, ref: "FileMetadata" },
+      name: { type: String },
+      size: { type: Number },
+      mimeType: { type: String },
+      downloadUrl: { type: String }, // pre-built Cloudflare Worker download URL
+    },
   },
   { timestamps: true }
 );

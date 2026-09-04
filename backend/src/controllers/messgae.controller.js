@@ -35,7 +35,7 @@ export const getChatById= async(req,res)=>{
 export const sendMessage= async(req,res)=>{ 
     try{
         const {id}=req.params;
-        const {text,image}=req.body;
+        const {text,image,file}=req.body;
         const loggedInUserId=req.user._id;
         let imageUrl;
         if(image){
@@ -49,7 +49,8 @@ export const sendMessage= async(req,res)=>{
             senderId:loggedInUserId,
             receiverId:id,
             text,
-            image:imageUrl
+            image:imageUrl,
+            file: file || undefined, // { fileId, name, size, mimeType, downloadUrl }
         });
 
 

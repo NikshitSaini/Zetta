@@ -35,10 +35,12 @@ const startServer = async () => {
     const { globalLimiter } = await import("./middleware/redis.middleware.js");
     const { default: authRoutes } = await import("./routes/auth.routes.js");
     const { default: messageRoutes } = await import("./routes/message.routes.js");
+    const { default: fileRoutes } = await import("./routes/file.routes.js");
 
     app.use("/api", globalLimiter);
     app.use("/api/auth", authRoutes);
     app.use("/api/messages", messageRoutes);
+    app.use("/api/files", fileRoutes);
 
     if (fs.existsSync(path.join(frontendDistPath, "index.html"))) {
       app.use(express.static(frontendDistPath));
