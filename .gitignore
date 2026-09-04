@@ -1,2 +1,12 @@
 node_modules
 .env
+.env.*
+!.env.example
+
+# Wrangler local dev state — contains request traces with secrets in URLs
+.wrangler/
+worker/.wrangler/
+
+# Build outputs
+dist/
+frontend/dist/
