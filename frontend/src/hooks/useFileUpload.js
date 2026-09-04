@@ -11,69 +11,66 @@ const MAX_RETRIES = 3;
 /**
  * useFileUpload — chunking upload engine
  *
- * Usage:
- *   const { uploadFile, cancelUpload, isUploading, progress, currentChunk, totalChunks, error, fileName } = useFileUpload();
- *
- *   const result = await uploadFile(file);
- *   // result: { fileId, name, size, mimeType, downloadUrl }  — or null if cancelled/failed
+ * Exposes:
+ *   uploadFile(file)  → { fileId, name, size, mimeType, downloadUrl } | null
+ *   cancelUpload()
+ *   isUploading       boolean
+ *   uploadedBytes     number  (bytes sent so far)
+ *   totalBytes        number  (total file bytes)
+ *   uploadSpeed       number  (bytes/sec, rolling average)
+ *   error             string | null
+ *   fileName          string | null
  */
 export default function useFileUpload() {
-  const [isUploading, setIsUploading] = useState(false);
-  const [progress, setProgress] = useState(0);       // 0-100
-  const [currentChunk, setCurrentChunk] = useState(0);
-  const [totalChunks, setTotalChunks] = useState(0);
-  const [error, setError] = useState(null);
-  const [fileName, setFileName] = useState(null);
+  const [isUploading, setIsUploading]     = useState(false);
+  const [uploadedBytes, setUploadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes]       = useState(0);
+  const [uploadSpeed, setUploadSpeed]     = useState(0); // bytes/sec
+  const [error, setError]                 = useState(null);
+  const [fileName, setFileName]           = useState(null);
 
-  // AbortController for cancellation
-  const abortRef = useRef(null);
+  const abortRef       = useRef(null);
+  const speedTracker   = useRef({ lastTime: 0, lastBytes: 0 });
 
-  /**
-   * Uploads a file in 19 MB chunks through the Cloudflare Worker relay.
-   * Returns the file attachment object on success, or null if cancelled/failed.
-   */
   const uploadFile = useCallback(async (file) => {
     if (!file) return null;
 
     setIsUploading(true);
-    setProgress(0);
+    setUploadedBytes(0);
+    setTotalBytes(file.size);
+    setUploadSpeed(0);
     setError(null);
     setFileName(file.name);
+    speedTracker.current = { lastTime: Date.now(), lastBytes: 0 };
 
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
 
     try {
       const numChunks = Math.ceil(file.size / CHUNK_SIZE);
-      setTotalChunks(numChunks);
-      setCurrentChunk(0);
 
-      // ── Step 1: Init upload (get fileId + uploadToken + workerUrl) ──────────
+      // ── Step 1: Init ──────────────────────────────────────────────────────
       const initRes = await axiosInstance.post("/files/init", {
-        originalName: file.name,
-        mimeType: file.type || "application/octet-stream",
-        totalSize: file.size,
-        totalChunks: numChunks,
+        originalName:  file.name,
+        mimeType:      file.type || "application/octet-stream",
+        totalSize:     file.size,
+        totalChunks:   numChunks,
       });
 
       const { fileId, uploadToken, workerUrl } = initRes.data;
-
-      // ── Step 2: Upload chunks sequentially ────────────────────────────────
       const uploadedChunks = [];
+      let cumulativeBytes  = 0;
 
+      // ── Step 2: Upload chunks ─────────────────────────────────────────────
       for (let i = 0; i < numChunks; i++) {
         if (signal.aborted) return null;
 
-        setCurrentChunk(i + 1);
-
         const blob = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
         const formData = new FormData();
-        // Name the blob so Telegram preserves the original filename
-        formData.append("document", blob, `chunk_${i}_${file.name}`);
+        formData.append("document",   blob, `chunk_${i}_${file.name}`);
         formData.append("chunkIndex", String(i));
 
-        // Retry loop with exponential backoff
-        let attempt = 0;
+        let attempt     = 0;
         let chunkResult = null;
 
         while (attempt < MAX_RETRIES) {
@@ -82,19 +79,18 @@ export default function useFileUpload() {
 
           try {
             const chunkRes = await fetch(`${workerUrl}/upload-chunk`, {
-              method: "POST",
+              method:  "POST",
               headers: { Authorization: `Bearer ${uploadToken}` },
-              body: formData,
+              body:    formData,
               signal,
             });
 
             if (chunkRes.status === 429) {
-              // Respect Telegram's retry_after
               const data = await chunkRes.json();
               const wait = (data.retryAfter ?? 5) * 1000;
-              console.warn(`Rate limited on chunk ${i}, waiting ${wait}ms`);
+              console.warn(`Rate limited on chunk ${i}, retrying in ${wait}ms`);
               await delay(wait, signal);
-              continue; // retry same attempt
+              continue;
             }
 
             if (!chunkRes.ok) {
@@ -103,17 +99,11 @@ export default function useFileUpload() {
             }
 
             const data = await chunkRes.json();
-            chunkResult = {
-              index: i,
-              telegramFileId: data.telegramFileId,
-              size: blob.size,
-            };
-            break; // success — exit retry loop
+            chunkResult = { index: i, telegramFileId: data.telegramFileId, size: blob.size };
+            break;
           } catch (err) {
             if (signal.aborted || err.name === "AbortError") return null;
             if (attempt >= MAX_RETRIES) throw err;
-
-            // Exponential backoff: 2s, 4s, 8s
             const backoff = Math.pow(2, attempt) * 1000;
             console.warn(`Chunk ${i} attempt ${attempt} failed (${err.message}), retrying in ${backoff}ms`);
             await delay(backoff, signal);
@@ -123,28 +113,32 @@ export default function useFileUpload() {
         if (!chunkResult) throw new Error(`Failed to upload chunk ${i} after ${MAX_RETRIES} attempts`);
         uploadedChunks.push(chunkResult);
 
-        // Update progress
-        setProgress(Math.round(((i + 1) / numChunks) * 100));
+        // Update bytes + rolling speed
+        cumulativeBytes += blob.size;
+        setUploadedBytes(cumulativeBytes);
 
-        // ── Rate-limit pacing: 1 second between chunks ──────────────────────
-        if (i < numChunks - 1) {
-          await delay(1000, signal);
+        const now     = Date.now();
+        const elapsed = (now - speedTracker.current.lastTime) / 1000;
+        if (elapsed >= 0.5) {
+          const delta = cumulativeBytes - speedTracker.current.lastBytes;
+          setUploadSpeed(delta / elapsed);
+          speedTracker.current = { lastTime: now, lastBytes: cumulativeBytes };
         }
+
+        // 1 s pacing between chunks (Telegram rate limit)
+        if (i < numChunks - 1) await delay(1000, signal);
       }
 
       if (signal.aborted) return null;
 
       // ── Step 3: Finalize ──────────────────────────────────────────────────
-      await axiosInstance.post("/files/finalize", {
-        fileId,
-        chunks: uploadedChunks,
-      });
+      await axiosInstance.post("/files/finalize", { fileId, chunks: uploadedChunks });
 
       return {
         fileId,
-        name: file.name,
-        size: file.size,
-        mimeType: file.type || "application/octet-stream",
+        name:        file.name,
+        size:        file.size,
+        mimeType:    file.type || "application/octet-stream",
         downloadUrl: `${workerUrl}/download/${fileId}`,
       };
     } catch (err) {
@@ -159,36 +153,21 @@ export default function useFileUpload() {
     }
   }, []);
 
-  /** Cancels any in-progress upload immediately */
   const cancelUpload = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    if (abortRef.current) abortRef.current.abort();
     setIsUploading(false);
-    setProgress(0);
-    setCurrentChunk(0);
-    setTotalChunks(0);
+    setUploadedBytes(0);
+    setTotalBytes(0);
+    setUploadSpeed(0);
     setError(null);
     setFileName(null);
   }, []);
 
-  return {
-    uploadFile,
-    cancelUpload,
-    isUploading,
-    progress,
-    currentChunk,
-    totalChunks,
-    error,
-    fileName,
-  };
+  return { uploadFile, cancelUpload, isUploading, uploadedBytes, totalBytes, uploadSpeed, error, fileName };
 }
 
-// ─── Utility ──────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-/**
- * Promise-based delay that rejects immediately if the abort signal fires.
- */
 function delay(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new DOMException("Aborted", "AbortError"));
