@@ -6,7 +6,7 @@ import toast from "react-hot-toast";
 const CHUNK_SIZE = 19 * 1024 * 1024;
 
 /** Max retry attempts per chunk */
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 6;
 
 /**
  * useFileUpload — chunking upload engine
@@ -85,10 +85,10 @@ export default function useFileUpload() {
               signal,
             });
 
-            if (chunkRes.status === 429) {
-              const data = await chunkRes.json();
-              const wait = (data.retryAfter ?? 5) * 1000;
-              console.warn(`Rate limited on chunk ${i}, retrying in ${wait}ms`);
+            if (chunkRes.status === 429 || chunkRes.status === 503) {
+              const data = await chunkRes.json().catch(() => ({}));
+              const wait = (data.retryAfter ?? Math.pow(2, attempt) * 3) * 1000;
+              console.warn(`Server busy/rate-limited (${chunkRes.status}) on chunk ${i}, attempt ${attempt}, waiting ${wait}ms`);
               await delay(wait, signal);
               continue;
             }
@@ -104,7 +104,7 @@ export default function useFileUpload() {
           } catch (err) {
             if (signal.aborted || err.name === "AbortError") return null;
             if (attempt >= MAX_RETRIES) throw err;
-            const backoff = Math.pow(2, attempt) * 1000;
+            const backoff = Math.min(Math.pow(2, attempt) * 2000, 30000);
             console.warn(`Chunk ${i} attempt ${attempt} failed (${err.message}), retrying in ${backoff}ms`);
             await delay(backoff, signal);
           }
@@ -125,8 +125,8 @@ export default function useFileUpload() {
           speedTracker.current = { lastTime: now, lastBytes: cumulativeBytes };
         }
 
-        // 1 s pacing between chunks (Telegram rate limit)
-        if (i < numChunks - 1) await delay(1000, signal);
+        // 2 s pacing between chunks (respects Telegram 20 msgs/min rate limit)
+        if (i < numChunks - 1) await delay(2000, signal);
       }
 
       if (signal.aborted) return null;

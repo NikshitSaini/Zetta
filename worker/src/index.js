@@ -145,21 +145,40 @@ async function handleUploadChunk(request, env) {
     return corsJson({ error: `Failed to reach Telegram API: ${err.message}` }, 502);
   }
 
-  const tgData = await tgResponse.json();
+  // Safely extract text before JSON parsing to handle non-JSON / HTML error pages
+  const rawText = await tgResponse.text();
+  let tgData = null;
+  try {
+    tgData = JSON.parse(rawText);
+  } catch {
+    const status = tgResponse.status >= 400 ? tgResponse.status : 502;
+    const retryAfter = tgResponse.headers.get("retry-after")
+      ? parseInt(tgResponse.headers.get("retry-after"), 10)
+      : 10;
+    return corsJson(
+      {
+        error: `Telegram API non-JSON response (${tgResponse.status}): ${rawText.slice(0, 150)}`,
+        retryAfter,
+      },
+      status
+    );
+  }
 
-  // 4. Handle Telegram rate limiting
-  if (tgResponse.status === 429) {
-    const retryAfter = tgData.parameters?.retry_after ?? 5;
+  // 4. Handle Telegram rate limiting & API errors
+  if (tgResponse.status === 429 || tgData?.error_code === 429) {
+    const retryAfter = tgData?.parameters?.retry_after ?? 10;
     return corsJson(
       { error: "Telegram rate limit hit", retryAfter },
       429
     );
   }
 
-  if (!tgData.ok) {
+  if (!tgResponse.ok || !tgData?.ok) {
+    const description = tgData?.description || `HTTP status ${tgResponse.status}`;
+    const retryAfter = tgResponse.status === 503 ? 10 : undefined;
     return corsJson(
-      { error: `Telegram error: ${tgData.description}` },
-      502
+      { error: `Telegram error: ${description}`, retryAfter },
+      tgResponse.status >= 400 ? tgResponse.status : 502
     );
   }
 
@@ -272,27 +291,35 @@ async function handleDownload(request, env, fileId) {
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    const { pathname, method } = Object.assign(url, { method: request.method });
+    try {
+      const url = new URL(request.url);
+      const { pathname, method } = Object.assign(url, { method: request.method });
 
-    // CORS preflight
-    if (method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      // CORS preflight
+      if (method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: CORS_HEADERS });
+      }
+
+      // POST /upload-chunk
+      if (method === "POST" && pathname === "/upload-chunk") {
+        return handleUploadChunk(request, env);
+      }
+
+      // GET /download/:fileId
+      const downloadMatch = pathname.match(/^\/download\/([^/]+)$/);
+      if (method === "GET" && downloadMatch) {
+        const fileId = downloadMatch[1];
+        return handleDownload(request, env, fileId);
+      }
+
+      // 404 for everything else
+      return corsJson({ error: "Not found" }, 404);
+    } catch (err) {
+      console.error("Unhandled Worker error:", err);
+      return corsJson(
+        { error: `Worker error: ${err.message || "Internal server error"}` },
+        500
+      );
     }
-
-    // POST /upload-chunk
-    if (method === "POST" && pathname === "/upload-chunk") {
-      return handleUploadChunk(request, env);
-    }
-
-    // GET /download/:fileId
-    const downloadMatch = pathname.match(/^\/download\/([^/]+)$/);
-    if (method === "GET" && downloadMatch) {
-      const fileId = downloadMatch[1];
-      return handleDownload(request, env, fileId);
-    }
-
-    // 404 for everything else
-    return corsJson({ error: "Not found" }, 404);
   },
 };
